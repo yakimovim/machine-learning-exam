@@ -1,0 +1,4 @@
+report_cache/
+.Rhistory
+pml-testing.csv
+pml-training.csv
