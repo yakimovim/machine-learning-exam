@@ -128,18 +128,18 @@ $(document).ready(function () {
 
 <div id="abstract" class="section level2">
 <h2>Abstract</h2>
-<p>One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. A human activity recognition research has traditionally focused on discriminating between different activities, i.e. to predict “which” activity was performed at a specific point in time. Here we want to investigate “how (well)” an activity was performed by the wearer. We’ll construct predictor to understand if a person do an exercise correctly or not.</p>
+<p>One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. A human activity recognition research has traditionally focused on discriminating between different activities, i.e. to predict “which” activity was performed at a specific point in time. Here we want to investigate “how (well)” an activity was performed by the wearer. We’ll construct predictor to understand if a person performs an exercise correctly or not.</p>
 </div>
 <div id="data" class="section level2">
 <h2>Data</h2>
 <p>Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification and with various types of errors. The dataset contains data from accelerometers on the belt, forearm, arm, and dumbell.</p>
 <p>The description of the dataset can be found here:</p>
 <p><a href="http://groupware.les.inf.puc-rio.br/har" class="uri">http://groupware.les.inf.puc-rio.br/har</a></p>
-<p>Dataset at <a href="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv" class="uri">https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv</a> contains information from accelerometers and also ‘classe’ variable, which describes if the participant executes the exercise correctly or with some sort of error.</p>
+<p>Dataset at <a href="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv" class="uri">https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv</a> contains information from accelerometers and also ‘classe’ variable, which describes if the participant performs the exercise correctly or with some sort of error.</p>
 </div>
 <div id="goal" class="section level2">
 <h2>Goal</h2>
-<p>Our goal is to construct prediction function, which will take data from accelerometers on the belt, forearm, arm, and dumbell and provide information if the person executes the exercise correctly or which type of error she has.</p>
+<p>Our goal is to construct prediction function, which will take data from accelerometers on the belt, forearm, arm, and dumbell and provide information if the person performs the exercise correctly or which type of error she has.</p>
 </div>
 <div id="setup" class="section level2">
 <h2>Setup</h2>
@@ -159,7 +159,9 @@ $(document).ready(function () {
 </ul>
 <p>I’ll use the following packages:</p>
 <pre class="r"><code>require(dplyr)
-require(caret)</code></pre>
+require(caret)
+require(parallel)
+require(doParallel)</code></pre>
 </div>
 <div id="data-analysis" class="section level2">
 <h2>Data analysis</h2>
@@ -177,7 +179,7 @@ data &lt;- tbl_df(data)
 dim(data)</code></pre>
 <pre><code>## [1] 19622   160</code></pre>
 <p>Let’s clean the data a little bit. First of all, I’ll remove time and user information:</p>
-<pre class="r"><code>data &lt;- select(data, -(2:7))</code></pre>
+<pre class="r"><code>data &lt;- select(data, -(1:7))</code></pre>
 <p>This dataset contains a lot of columns with many NA values.</p>
 <pre class="r"><code>summary(data$max_roll_belt)</code></pre>
 <pre><code>##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA's 
@@ -206,7 +208,7 @@ rm(&quot;factor.columns&quot;, &quot;names.of.non.factor.columns.with.class&quot
 </div>
 <div id="prediction-model-creation" class="section level2">
 <h2>Prediction model creation</h2>
-<p>Now we can build a prediction model on the cleaned dataset. I’ll use random forest:</p>
+<p>We can build a prediction model on the cleaned dataset.</p>
 <pre class="r"><code>set.seed(45273)
 
 inTrain &lt;- createDataPartition(y = data$classe, p = 0.6, list = FALSE)
@@ -214,9 +216,27 @@ inTrain &lt;- createDataPartition(y = data$classe, p = 0.6, list = FALSE)
 training &lt;- data[inTrain,]
 testing &lt;- data[-inTrain,]
 
-rm(&quot;inTrain&quot;)
+rm(&quot;inTrain&quot;)</code></pre>
+<p>I’ll use random forest because it gives good results for quantitative data (factors). We have enough data rows:</p>
+<pre class="r"><code>dim(training)</code></pre>
+<pre><code>## [1] 11776    53</code></pre>
+<p>So we can use cross-validation technique during the model teaching. I’ll also use power of several cores to make the teaching:</p>
+<pre class="r"><code>cluster &lt;- makeCluster(detectCores() - 1)
+registerDoParallel(cluster)
 
-model.fit &lt;- train(classe ~ ., data = training, method = &quot;rf&quot;)</code></pre>
+fitControl &lt;- trainControl(method = &quot;cv&quot;,
+                           number = 5,
+                           allowParallel = TRUE)
+
+model.fit &lt;- train(classe ~ ., data = training, method = &quot;rf&quot;, trControl = fitControl)
+
+stopCluster(cluster)
+registerDoSEQ()
+
+rm(&quot;fitControl&quot;, &quot;cluster&quot;)</code></pre>
+</div>
+<div id="accuracy-estimation" class="section level2">
+<h2>Accuracy estimation</h2>
 <p>Now we can estimate accuracy of our model. On the training dataset:</p>
 <pre class="r"><code>pred.train &lt;- predict(model.fit, training)
 
@@ -226,33 +246,12 @@ cm &lt;- confusionMatrix(pred.train, training$classe)</code></pre>
 <pre class="r"><code>pred.test &lt;- predict(model.fit, testing)
 
 cm &lt;- confusionMatrix(pred.test, testing$classe)</code></pre>
-<p>accuracy equals to 0.9998725 with confidence interval (0.9992901; 0.9999968)</p>
+<p>accuracy equals to 0.9928626 with confidence interval (0.9907414; 0.9946041)</p>
 <p>As you can see, the model is pretty accurate.</p>
-</div>
-<div id="prediction-for-real-data" class="section level2">
-<h2>Prediction for real data</h2>
-<p>We can test our prediction model on some real data from <a href="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv" class="uri">https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv</a>.</p>
-<pre class="r"><code>if(!file.exists(&quot;pml-testing.csv&quot;))
-{
-    download.file(&quot;https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv&quot;, 
-                  destfile = &quot;pml-testing.csv&quot;);
-}
-
-validate &lt;- read.csv(&quot;pml-testing.csv&quot;)
-
-validate &lt;- tbl_df(validate)
-
-pred.valid &lt;- predict(model.fit, validate)
-
-pred.valid</code></pre>
-<pre><code>##  [1] A A A A A A A A A A A A A A A A A A A A
-## Levels: A B C D E</code></pre>
-<p>In this testing dataset all participant have class A of the exercise execution.</p>
 </div>
 <div id="conclusion" class="section level2">
 <h2>Conclusion</h2>
-<p>In this work we created prediction model for recognizing class of exercise execution using data from different accelerometers. The model is based on random forest and has good accuracy.</p>
-<p>We predicted the class of exercise execution for a test dataset and all participants have class A.</p>
+<p>In this work we created prediction model for recognizing class how a person performs Unilateral Dumbbell Biceps Curl using data from different accelerometers. The model is based on random forest and has good accuracy with out of sample confidence interval (0.9907414; 0.9946041).</p>
 </div>
 
 

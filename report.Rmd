@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 ## Abstract
 
-One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. A human activity recognition research has traditionally focused on discriminating between different activities, i.e. to predict "which" activity was performed at a specific point in time. Here we want to investigate "how (well)" an activity was performed by the wearer. We'll construct predictor to understand if a person do an exercise correctly or not.
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. A human activity recognition research has traditionally focused on discriminating between different activities, i.e. to predict "which" activity was performed at a specific point in time. Here we want to investigate "how (well)" an activity was performed by the wearer. We'll construct predictor to understand if a person performs an exercise correctly or not.
 
 ## Data
 
@@ -21,11 +21,11 @@ The description of the dataset can be found here:
 
 [http://groupware.les.inf.puc-rio.br/har](http://groupware.les.inf.puc-rio.br/har)
 
-Dataset at [https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv) contains information from accelerometers and also 'classe' variable, which describes if the participant executes the exercise correctly or with some sort of error.
+Dataset at [https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv) contains information from accelerometers and also 'classe' variable, which describes if the participant performs the exercise correctly or with some sort of error.
 
 ## Goal
 
-Our goal is to construct prediction function, which will take data from accelerometers on the belt, forearm, arm, and dumbell and provide information if the person executes the exercise correctly or which type of error she has.
+Our goal is to construct prediction function, which will take data from accelerometers on the belt, forearm, arm, and dumbell and provide information if the person performs the exercise correctly or which type of error she has.
 
 ## Setup
 
@@ -43,6 +43,8 @@ I'll use the following packages:
 ```{r}
 require(dplyr)
 require(caret)
+require(parallel)
+require(doParallel)
 ```
 
 ## Data analysis
@@ -66,7 +68,7 @@ dim(data)
 Let's clean the data a little bit. First of all, I'll remove time and user information:
 
 ```{r}
-data <- select(data, -(2:7))
+data <- select(data, -(1:7))
 ```
 
 This dataset contains a lot of columns with many NA values. 
@@ -109,9 +111,9 @@ rm("factor.columns", "names.of.non.factor.columns.with.class")
 
 ## Prediction model creation
 
-Now we can build a prediction model on the cleaned dataset. I'll use random forest:
+We can build a prediction model on the cleaned dataset.
 
-```{r, cache=TRUE}
+```{r}
 set.seed(45273)
 
 inTrain <- createDataPartition(y = data$classe, p = 0.6, list = FALSE)
@@ -120,9 +122,33 @@ training <- data[inTrain,]
 testing <- data[-inTrain,]
 
 rm("inTrain")
-
-model.fit <- train(classe ~ ., data = training, method = "rf")
 ```
+
+I'll use random forest because it gives good results for quantitative data (factors). We have enough data rows:
+
+```{r}
+dim(training)
+```
+
+So we can use cross-validation technique during the model teaching. I'll also use power of several cores to make the teaching:
+
+```{r, cache=TRUE}
+cluster <- makeCluster(detectCores() - 1)
+registerDoParallel(cluster)
+
+fitControl <- trainControl(method = "cv",
+                           number = 5,
+                           allowParallel = TRUE)
+
+model.fit <- train(classe ~ ., data = training, method = "rf", trControl = fitControl)
+
+stopCluster(cluster)
+registerDoSEQ()
+
+rm("fitControl", "cluster")
+```
+
+## Accuracy estimation
 
 Now we can estimate accuracy of our model. On the training dataset:
 
@@ -146,30 +172,6 @@ accuracy equals to `r cm$overall[["Accuracy"]]` with confidence interval (`r cm$
 
 As you can see, the model is pretty accurate.
 
-## Prediction for real data
-
-We can test our prediction model on some real data from [https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv).
-
-```{r}
-if(!file.exists("pml-testing.csv"))
-{
-    download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", 
-                  destfile = "pml-testing.csv");
-}
-
-validate <- read.csv("pml-testing.csv")
-
-validate <- tbl_df(validate)
-
-pred.valid <- predict(model.fit, validate)
-
-pred.valid
-```
-
-In this testing dataset all participant have class `r as.character(pred.valid[1])` of the exercise execution.
-
 ## Conclusion
 
-In this work we created prediction model for recognizing class of exercise execution using data from different accelerometers. The model is based on random forest and has good accuracy.
-
-We predicted the class of exercise execution for a test dataset and all participants have class `r as.character(pred.valid[1])`.
+In this work we created prediction model for recognizing class how a person performs Unilateral Dumbbell Biceps Curl using data from different accelerometers. The model is based on random forest and has good accuracy with out of sample confidence interval (`r cm$overall[["AccuracyLower"]]`; `r cm$overall[["AccuracyUpper"]]`).

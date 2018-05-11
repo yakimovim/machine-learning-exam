@@ -21,7 +21,7 @@ dim(data)
 
 # remove time and user info
 
-data <- select(data, -(2:7))
+data <- select(data, -(1:7))
 
 hasNA <- function(x) { sum(is.na(x)) > 0 }
 
@@ -59,7 +59,22 @@ rm("inTrain")
 
 # trc <- trainControl(method = "cv")
 
-model.fit <- train(classe ~ ., data = training, method = "rf")
+require(parallel)
+require(doParallel)
+
+cluster <- makeCluster(detectCores() - 1)
+registerDoParallel(cluster)
+
+fitControl <- trainControl(method = "cv",
+                           number = 5,
+                           allowParallel = TRUE)
+
+model.fit <- train(classe ~ ., data = training, method = "rf", trControl = fitControl)
+
+stopCluster(cluster)
+registerDoSEQ()
+
+rm("fitControl", "cluster")
 
 pred.train <- predict(model.fit, training)
 
@@ -78,5 +93,4 @@ validate <- read.csv("pml-testing.csv")
 validate <- tbl_df(validate)
 
 pred.valid <- predict(model.fit, validate)
-
 
