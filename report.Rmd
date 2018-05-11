@@ -1,5 +1,5 @@
 ---
-title: "Prediction of the manner of exercise"
+title: "Prediction of the manner of an exercise"
 author: "Ivan Iakimov"
 date: '08/05/2018'
 output: html_document
